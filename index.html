@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Pastelería El Caballo Goloso | Tienda Online</title>
+  <meta name="description" content="Tienda online de Pastelería El Caballo Goloso, pastelería artesana de Torrelodones desde 2002." />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+  <div class="topbar">Pastelería El Caballo Golosox · Torrelodones · Obrador artesano desde 2002</div>
+  <header class="site-header">
+    <div class="header-inner">
+      <div class="search-area"><button class="menu-btn" id="openMenu" aria-label="Abrir menú">☰</button><input id="searchInput" type="search" placeholder="Buscar productos, categorías..." autocomplete="off" /></div>
+      <a href="#" class="brand" id="homeLink" aria-label="Inicio"><strong>El Caballo Goloso</strong><span>Desde 2002</span></a>
+      <div class="header-actions"><button class="btn login-btn" id="loginBtn">Entrar</button><button class="btn" id="portalBtn" hidden>Mi portal</button><button class="btn btn-danger" id="logoutBtn" hidden>Salir</button><button class="btn btn-primary" id="openCart">Cesta <span class="cart-count" id="cartCount">0</span></button></div>
+    </div>
+    <nav class="category-bar" aria-label="Categorías principales"><ul class="category-list" id="categoryNav"><li><a href="#tienda" data-filter="all" class="active">Todos</a></li><li><a href="#novedades" data-filter="novedades">Novedades</a></li><li><a href="#desayunos" data-filter="desayunos">Desayunos</a></li><li><a href="#salados" data-filter="salados">Salados</a></li><li><a href="#bolleria" data-filter="bolleria">Bollería y panes</a></li><li><a href="#pasteleria" data-filter="pasteleria">Pastelería</a></li><li><a href="#gourmet" data-filter="gourmet">Gourmet</a></li><li><a href="#regalos" data-filter="regalos">Regalos</a></li><li><a href="#bebidas" data-filter="bebidas">Bebidas</a></li></ul></nav>
+  </header>
+
+  <aside class="mobile-panel" id="mobilePanel" aria-hidden="true"><button class="close-menu" id="closeMenu" aria-label="Cerrar menú">×</button><h3>La tienda</h3><a href="#" data-mobile-view="store">Tienda</a><a href="#novedades">Novedades</a><a href="#desayunos">Desayunos</a><a href="#salados">Salados</a><a href="#bolleria">Bollería</a><a href="#pasteleria">Pastelería</a><a href="#" data-mobile-login>Entrar / Registrarse</a><a href="#contacto">Contacto</a></aside>
+
+  <section class="view active" id="storeView">
+    <section class="hero" id="top"><div class="hero-card"><div><span class="section-tag">La tienda online</span><h1>Pastelería El Caballo Goloso.</h1><p>Dulces y salados artesanales elaborados en obrador propio desde 2002. Haz tu encargo online y recógelo en tienda cuando quieras.</p><div class="hero-actions"><a class="btn btn-primary" href="#tienda">Ver catálogo</a><button class="btn" id="heroLoginBtn">Entrar al portal</button></div></div><div class="hero-visual" aria-hidden="true"><div class="float-badge">Hecho hoy</div><div class="plate"><div class="hero-pastry">🥐</div></div></div></div></section>
+    <main id="tienda"><div id="sections"></div><div class="empty-state" id="emptyState">No hay productos que coincidan con tu búsqueda.</div><section class="features"><article class="feature"><strong>🏪 Recogida en tienda</strong><p>Elige tu tienda y hora de recogida al hacer el encargo. Sin esperas ni sorpresas.</p></article><article class="feature"><strong>👤 Portal cliente</strong><p>Consulta tus encargos, historial y repite pedidos anteriores con un clic.</p></article><article class="feature"><strong>🎂 Obrador artesano</strong><p>Elaboración propia desde 2002. Sin conservantes, con los mejores ingredientes.</p></article></section></main>
+  </section>
+
+  <section class="view" id="clientView"><div class="portal-wrap"><div class="portal-top"><div class="portal-title"><span class="section-tag">Portal cliente</span><h1 id="clientGreeting">Mi cuenta</h1><p>Consulta tus encargos y datos personales.</p></div><button class="btn" data-view="store">Volver a la tienda</button></div><div class="stats-grid" id="clientStats"></div><div class="portal-tabs" id="clientTabs"><button class="portal-tab active" data-tab="clientSummary">Resumen</button><button class="portal-tab" data-tab="clientOrders">Mis encargos</button><button class="portal-tab" data-tab="clientProfile">Mis datos</button></div><section class="portal-section active" id="clientSummary"></section><section class="portal-section" id="clientOrders"></section><section class="portal-section" id="clientProfile"></section></div></section>
+
+  <section class="view" id="adminView"><div class="portal-wrap"><div class="portal-top"><div class="portal-title"><span class="section-tag">Panel administrador</span><h1>Gestión de tienda</h1><p>Controla productos, stock y encargos.</p></div><button class="btn" data-view="store">Ver tienda</button></div><div class="stats-grid" id="adminStats"></div><div class="portal-tabs" id="adminTabs"><button class="portal-tab active" data-tab="adminProducts">Productos</button><button class="portal-tab" data-tab="adminStock">Stock</button><button class="portal-tab" data-tab="adminOrders">Encargos</button></div><section class="portal-section active" id="adminProducts"></section><section class="portal-section" id="adminStock"></section><section class="portal-section" id="adminOrders"></section></div></section>
+
+  <div class="overlay" id="overlay"></div>
+
+  <aside class="cart-drawer" id="cartDrawer" aria-hidden="true">
+    <div class="cart-head"><h3>Cesta <small>Encargo online</small></h3><button class="icon-btn" id="closeCart" aria-label="Cerrar cesta">×</button></div>
+    <div class="cart-items" id="cartItems"></div>
+    <div class="cart-foot"><div class="total-row"><span>Total</span><span id="cartTotal">0,00 €</span></div><button class="checkout-btn" id="checkoutBtn">Confirmar encargo</button><button class="continue-btn" id="continueBtn">Seguir comprando</button></div>
+  </aside>
+
+  <section class="modal" id="loginModal" aria-hidden="true" role="dialog">
+    <div class="modal-head">
+      <div><h3>Bienvenido/a</h3><p style="margin:6px 0 0;color:var(--muted);font-size:14px;">Accede para gestionar tus encargos.</p></div>
+      <button class="icon-btn" id="closeLogin">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="demo-users"><strong>Demo rápida</strong><br>Cliente: cliente@demo.com / 1234 &nbsp;·&nbsp; Admin: admin@demo.com / 1234</div>
+      <form id="loginForm" novalidate>
+        <label for="emailInput">Email</label>
+        <input class="form-control" id="emailInput" type="email" value="cliente@demo.com" autocomplete="email" required>
+        <span class="field-error" id="emailLoginError">Introduce un email válido</span>
+        <br><br>
+        <label for="passwordInput">Contraseña</label>
+        <input class="form-control" id="passwordInput" type="password" value="1234" autocomplete="current-password" required>
+        <span class="field-error" id="passLoginError">La contraseña es obligatoria</span>
+        <div class="form-actions">
+          <button class="btn btn-primary" type="submit">Entrar</button>
+          <button class="btn" type="button" id="fillAdmin">Usar admin</button>
+          <button class="btn" type="button" id="fillClient">Usar cliente</button>
+        </div>
+      </form>
+      <div class="modal-switch">¿Aún no tienes cuenta? <a id="goToRegister">Regístrate gratis</a></div>
+    </div>
+  </section>
+
+  <section class="modal" id="registerModal" aria-hidden="true" role="dialog">
+    <div class="modal-head">
+      <div><h3>Crear cuenta</h3><p style="margin:6px 0 0;color:var(--muted);font-size:14px;">Rellena tus datos para hacer encargos online.</p></div>
+      <button class="icon-btn" id="closeRegister">×</button>
+    </div>
+    <div class="modal-body">
+      <form id="registerForm" novalidate>
+        <div class="form-grid">
+          <div class="full">
+            <label for="regName">Nombre completo</label>
+            <input class="form-control" id="regName" type="text" placeholder="Ana García López" autocomplete="name" required>
+            <span class="field-error" id="regNameError">El nombre es obligatorio</span>
+          </div>
+          <div class="full">
+            <label for="regEmail">Email</label>
+            <input class="form-control" id="regEmail" type="email" placeholder="ana@ejemplo.com" autocomplete="email" required>
+            <span class="field-error" id="regEmailError">Introduce un email válido</span>
+          </div>
+          <div class="full">
+            <label for="regPhone">Teléfono <span style="font-weight:400">(opcional)</span></label>
+            <input class="form-control" id="regPhone" type="tel" placeholder="600 000 000" autocomplete="tel">
+          </div>
+          <div>
+            <label for="regPassword">Contraseña</label>
+            <input class="form-control" id="regPassword" type="password" placeholder="Mínimo 6 caracteres" autocomplete="new-password" required>
+            <div class="strength-bar"><div class="strength-fill" id="strengthFill"></div></div>
+            <span class="field-error" id="regPassError">Mínimo 6 caracteres</span>
+          </div>
+          <div>
+            <label for="regPassword2">Repetir contraseña</label>
+            <input class="form-control" id="regPassword2" type="password" placeholder="Repite la contraseña" autocomplete="new-password" required>
+            <span class="field-error" id="regPass2Error">Las contraseñas no coinciden</span>
+          </div>
+        </div>
+        <div class="form-actions" style="margin-top:18px">
+          <button class="btn btn-primary" type="submit" style="flex:1">Crear cuenta</button>
+        </div>
+      </form>
+      <div class="modal-switch">¿Ya tienes cuenta? <a id="goToLogin">Inicia sesión</a></div>
+    </div>
+  </section>
+
+  <section class="modal" id="checkoutModal" aria-hidden="true" role="dialog">
+    <div class="modal-head">
+      <div><h3>Confirmar encargo</h3><p style="margin:6px 0 0;color:var(--muted);font-size:14px;">Elige dónde y cuándo recoger tu pedido.</p></div>
+      <button class="icon-btn" id="closeCheckout">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="order-summary" id="checkoutSummary"></div>
+      <label style="margin-bottom:10px;display:block">Tienda de recogida</label>
+      <div class="tienda-cards">
+        <div class="tienda-card selected" id="tienda1" onclick="selectTienda('tienda1')">
+          <div class="pickup-icon">🏪</div>
+          <strong>Tienda principal</strong>
+          <span>C/ José Sánchez Rubio, 2<br>Torrelodones</span>
+        </div>
+        <div class="tienda-card" id="tienda2" onclick="selectTienda('tienda2')">
+          <div class="pickup-icon">🛍️</div>
+          <strong>CC Espacio</strong>
+          <span>CC Espacio Torrelodones<br>Local comercial</span>
+        </div>
+      </div>
+      <br>
+      <div class="horario-grid">
+        <div>
+          <label for="pickupDate">Fecha de recogida</label>
+          <input class="form-control" id="pickupDate" type="date" required>
+          <span class="field-error" id="dateError">Selecciona una fecha</span>
+        </div>
+        <div>
+          <label for="pickupTime">Hora aproximada</label>
+          <select class="form-control" id="pickupTime" required>
+            <option value="">Seleccionar hora</option>
+            <option>09:00 – 09:30</option><option>09:30 – 10:00</option>
+            <option>10:00 – 10:30</option><option>10:30 – 11:00</option>
+            <option>11:00 – 11:30</option><option>11:30 – 12:00</option>
+            <option>12:00 – 12:30</option><option>12:30 – 13:00</option>
+            <option>16:00 – 16:30</option><option>16:30 – 17:00</option>
+            <option>17:00 – 17:30</option><option>17:30 – 18:00</option>
+            <option>18:00 – 18:30</option><option>18:30 – 19:00</option>
+            <option>19:00 – 19:30</option><option>19:30 – 20:00</option>
+          </select>
+          <span class="field-error" id="timeError">Selecciona una hora</span>
+        </div>
+      </div>
+      <div style="background:#fff8ef;border:1px solid var(--line);border-radius:18px;padding:14px;margin-top:16px;font-size:13px;color:var(--muted);line-height:1.55">
+        💳 <strong style="color:var(--ink)">Pago en tienda</strong> — Abona tu pedido al recogerlo en efectivo o con tarjeta.
+      </div>
+      <div class="form-actions" style="margin-top:18px">
+        <button class="btn btn-primary" style="flex:1" id="confirmOrderBtn">Confirmar encargo</button>
+        <button class="btn" id="cancelCheckoutBtn">Cancelar</button>
+      </div>
+    </div>
+  </section>
+
+  <a class="whatsapp-float" id="whatsappBtn" href="#" aria-label="WhatsApp"><span>✆</span><span class="wa-text">WhatsApp</span></a>
+  <div class="toast" id="toast"></div>
+  <footer id="contacto"><strong>Pastelería El Caballo Goloso</strong><p>C/ José Sánchez Rubio, 2 · 28250 Torrelodones, Madrid · Tel. 91 859 67 11</p><p>También en Centro Comercial Espacio Torrelodones · Obrador artesano desde 2002.</p></footer>
+  <script src="js/app.js"></script>
+</body>
+</html>
