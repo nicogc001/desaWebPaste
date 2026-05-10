@@ -1,5 +1,9 @@
 'use strict';
 
+const API_URL = ['localhost', '127.0.0.1'].includes(window.location.hostname)
+  ? 'http://localhost:3000/api'
+  : null;
+
 const STORAGE_KEYS = {
   products: 'caballoP5',
   orders: 'caballoO5',
@@ -148,7 +152,7 @@ function stockCls(stock) {
 }
 
 function svgImg(item) {
-  const svg = `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 900 760'><defs><linearGradient id='g' x1='0' x2='1' y1='0' y2='1'><stop stop-color='${item.colorA}' offset='0'/><stop stop-color='${item.colorB}' offset='1'/></linearGradient><filter id='s'><feDropShadow dx='0' dy='22' stdDeviation='28' flood-color='rgba(48,28,18,.28)'/></filter></defs><rect width='900' height='760' fill='url(#g)'/><circle cx='705' cy='135' r='170' fill='rgba(255,255,255,.19)'/><rect x='130' y='118' width='640' height='490' rx='70' fill='rgba(255,255,255,.55)' filter='url(#s)'/><text x='450' y='390' text-anchor='middle' dominant-baseline='middle' font-size='190'>${item.emoji}</text><text x='450' y='650' text-anchor='middle' font-family='Montserrat,Arial' font-size='38' font-weight='700' fill='rgba(255,255,255,.94)'>${escHtml(item.title)}</text></svg>`;
+  const svg = `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 900 760'><defs><linearGradient id='g' x1='0' x2='1' y1='0' y2='1'><stop stop-color='${item.colorA}' offset='0'/><stop stop-color='${item.colorB}' offset='1'/></linearGradient><filter id='s'><feDropShadow dx='0' dy='22' stdDeviation='28' flood-color='rgba(48,28,18,.28)'/></filter></defs><rect width='900' height='760' fill='url(#g)'/><circle cx='705' cy='135' r='170' fill='rgba(255,255,255,.19)'/><rect x='130' y='118' width='640' height='490' rx='70' fill='rgba(255,255,255,.55)' filter='url(#s)'/><text x='450' y='390' text-anchor='middle' dominant-baseline='middle' font-size='190'>${item.emoji || '🍰'}</text><text x='450' y='650' text-anchor='middle' font-family='Montserrat,Arial' font-size='38' font-weight='700' fill='rgba(255,255,255,.94)'>${escHtml(item.title)}</text></svg>`;
   return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
 }
 
@@ -170,10 +174,64 @@ function readFile(file) {
 }
 
 function priceText(item) {
-  const prices = (item.variants || []).map((variant) => Number(variant.price));
+  const prices = (item.variants || []).map((variant) => Number(variant.price)).filter((price) => !Number.isNaN(price));
+
+  if (!prices.length) return fmtPrice(0);
+
   const min = Math.min(...prices);
   const max = Math.max(...prices);
+
   return min === max ? fmtPrice(min) : `${fmtPrice(min)} – ${fmtPrice(max)}`;
+}
+
+function normalizarProductoApi(item) {
+  const rawVariants = item.variants || item.variantes || item.ProductoVariantes || item.productoVariantes || [];
+
+  return {
+    id: String(item.id),
+    title: item.title || item.nombre || '',
+    desc: item.desc || item.descripcion || '',
+    category: item.category || item.categoria || 'novedades',
+    emoji: item.emoji || '🍰',
+    colorA: item.colorA || '#b72e24',
+    colorB: item.colorB || '#f7d9a9',
+    stock: Number(item.stock || 0),
+    active: item.active ?? item.activo ?? true,
+    badge: item.badge || item.etiqueta || '',
+    image: item.image || item.imagen || '',
+    variants: rawVariants.map((variant) => ({
+      id: variant.id ? String(variant.id) : undefined,
+      name: variant.name || variant.nombre || 'Unidad',
+      price: Number(variant.price ?? variant.precio ?? 0)
+    }))
+  };
+}
+
+async function cargarProductosDesdeApi() {
+  if (!API_URL) {
+    renderStore();
+    return;
+  }
+
+  try {
+    const response = await fetch(`${API_URL}/productos`);
+
+    if (!response.ok) {
+      throw new Error('No se pudieron cargar los productos');
+    }
+
+    const data = await response.json();
+
+    products = data.map(normalizarProductoApi);
+
+    save(STORAGE_KEYS.products, products);
+    renderStore();
+    updateCart();
+  } catch (error) {
+    console.error(error);
+    showToast('No se pudo conectar con la API. Usando productos locales.');
+    renderStore();
+  }
 }
 
 function renderStore() {
@@ -213,6 +271,11 @@ function bindCards() {
       const select = card.querySelector('.variant-select');
       let variantIndex = 0;
 
+      if (!item) {
+        showToast('Producto no encontrado');
+        return;
+      }
+
       if (select) {
         if (!select.value) {
           showToast('Selecciona una variante');
@@ -222,7 +285,14 @@ function bindCards() {
         variantIndex = Number(select.value);
       }
 
-      addToCart(item, item.variants[variantIndex]);
+      const variant = item.variants[variantIndex];
+
+      if (!variant) {
+        showToast('Variante no disponible');
+        return;
+      }
+
+      addToCart(item, variant);
     };
   });
 }
@@ -234,6 +304,7 @@ function addToCart(item, variant) {
   }
 
   const quantityInCart = cart.filter((line) => line.id === item.id).reduce((sum, line) => sum + line.qty, 0);
+
   if (quantityInCart >= item.stock) {
     showToast('No hay más stock disponible');
     return;
@@ -245,7 +316,15 @@ function addToCart(item, variant) {
   if (existing) {
     existing.qty += 1;
   } else {
-    cart.push({ key, id: item.id, title: item.title, variant: variant.name, price: Number(variant.price), image: getImg(item), qty: 1 });
+    cart.push({
+      key,
+      id: item.id,
+      title: item.title,
+      variant: variant.name,
+      price: Number(variant.price),
+      image: getImg(item),
+      qty: 1
+    });
   }
 
   save(STORAGE_KEYS.cart, cart);
@@ -274,6 +353,7 @@ function updateCart() {
       const key = button.closest('.cart-item').dataset.key;
       const action = button.dataset.cart;
       const line = cart.find((item) => item.key === key);
+
       if (!line) return;
 
       const productItem = products.find((item) => item.id === line.id);
@@ -350,6 +430,7 @@ function openCheckoutModal() {
   }
 
   const user = currentUser();
+
   if (!user) {
     closeCart();
     openLogin();
@@ -363,10 +444,12 @@ function openCheckoutModal() {
   }
 
   const total = cart.reduce((sum, line) => sum + line.qty * line.price, 0);
+
   $('checkoutSummary').innerHTML = `<h4>Resumen del encargo</h4>${cart.map((line) => `<div class="order-summary-item"><span>${escHtml(line.title)} ×${line.qty} <small>(${escHtml(line.variant)})</small></span><span>${fmtPrice(line.qty * line.price)}</span></div>`).join('')}<div class="order-summary-total"><span>Total</span><span>${fmtPrice(total)}</span></div>`;
 
   const tomorrow = new Date();
   tomorrow.setDate(tomorrow.getDate() + 1);
+
   $('pickupDate').min = tomorrow.toISOString().slice(0, 10);
   $('pickupDate').value = '';
   $('pickupTime').value = '';
@@ -406,6 +489,7 @@ function confirmOrder() {
 
   const user = currentUser();
   const tiendaLabel = selectedTienda === 'tienda1' ? 'Tienda principal' : 'CC Espacio Torrelodones';
+
   const badLine = cart.find((line) => {
     const productItem = products.find((item) => item.id === line.id);
     return !productItem || productItem.stock < line.qty;
@@ -425,7 +509,13 @@ function confirmOrder() {
     pickupDate: $('pickupDate').value,
     pickupTime: $('pickupTime').value,
     total: cart.reduce((sum, line) => sum + line.qty * line.price, 0),
-    items: cart.map((line) => ({ productId: line.id, title: line.title, variant: line.variant, qty: line.qty, price: line.price }))
+    items: cart.map((line) => ({
+      productId: line.id,
+      title: line.title,
+      variant: line.variant,
+      qty: line.qty,
+      price: line.price
+    }))
   };
 
   products = products.map((item) => {
@@ -467,7 +557,13 @@ function login(email, password) {
     return;
   }
 
-  session = { userId: user.id, role: user.role, name: user.name, email: user.email };
+  session = {
+    userId: user.id,
+    role: user.role,
+    name: user.name,
+    email: user.email
+  };
+
   localStorage.setItem(STORAGE_KEYS.session, JSON.stringify(session));
 
   closeLogin();
@@ -494,7 +590,13 @@ function register(name, email, phone, password) {
   users.push(newUser);
   save(STORAGE_KEYS.users, users);
 
-  session = { userId: newUser.id, role: 'cliente', name: newUser.name, email: newUser.email };
+  session = {
+    userId: newUser.id,
+    role: 'cliente',
+    name: newUser.name,
+    email: newUser.email
+  };
+
   localStorage.setItem(STORAGE_KEYS.session, JSON.stringify(session));
 
   closeRegister();
@@ -513,6 +615,7 @@ function logout() {
 
 function updateAuthUI() {
   const user = currentUser();
+
   $('loginBtn').hidden = !!user;
   $('portalBtn').hidden = !user;
   $('logoutBtn').hidden = !user;
@@ -541,6 +644,7 @@ function showView(viewName) {
 
 function showPortalForRole() {
   const user = currentUser();
+
   if (!user) {
     openLogin();
     return;
@@ -597,14 +701,19 @@ function renderStatusSel(order) {
 
 function repeatOrder(id) {
   const order = orders.find((item) => item.id === id);
+
   if (!order) return;
 
   order.items.forEach((line) => {
     const productItem = products.find((item) => item.id === line.productId && item.active && item.stock > 0);
+
     if (!productItem) return;
 
     const variant = productItem.variants.find((item) => item.name === line.variant) || productItem.variants[0];
-    for (let index = 0; index < line.qty; index += 1) addToCart(productItem, variant);
+
+    for (let index = 0; index < line.qty; index += 1) {
+      addToCart(productItem, variant);
+    }
   });
 
   showView('store');
@@ -627,21 +736,35 @@ function renderAdminPortal() {
 
 function renderAdminProducts() {
   $('adminProducts').innerHTML = `<div class="panel-card"><h3>${editingProductId ? 'Editar producto' : 'Añadir producto'}</h3><form id="productForm">${renderProdFields(editingProductId ? products.find((item) => item.id === editingProductId) : null)}<div class="form-actions"><button class="btn btn-primary" type="submit">${editingProductId ? 'Guardar' : 'Añadir'}</button>${editingProductId ? '<button class="btn" type="button" onclick="cancelEditProduct()">Cancelar</button>' : ''}</div></form></div><div class="panel-card"><h3>Listado de productos</h3><div class="table-wrap"><table><thead><tr><th>Producto</th><th>Categoría</th><th>Precio</th><th>Stock</th><th>Estado</th><th>Acciones</th></tr></thead><tbody>${products.map((item) => `<tr><td><strong>${escHtml(item.title)}</strong><br><small style="color:var(--muted)">${escHtml(item.desc)}</small></td><td>${escHtml(categoryMeta[item.category]?.title || item.category)}</td><td>${priceText(item)}</td><td>${item.stock}</td><td>${item.active ? '<span class="status entregado">Activo</span>' : '<span class="status cancelado">Inactivo</span>'}</td><td><button class="btn btn-small" onclick="editProduct('${item.id}')">Editar</button> <button class="btn btn-small btn-danger" onclick="toggleProduct('${item.id}')">${item.active ? 'Desactivar' : 'Activar'}</button></td></tr>`).join('')}</tbody></table></div></div>`;
+
   bindProdForm();
 }
 
 function renderProdFields(item) {
-  const source = item || { title: '', desc: '', category: 'novedades', emoji: '🍰', colorA: '#b72e24', colorB: '#f7d9a9', stock: 10, badge: '', image: '', variants: [{ name: 'Unidad', price: 9.9 }] };
+  const source = item || {
+    title: '',
+    desc: '',
+    category: 'novedades',
+    emoji: '🍰',
+    colorA: '#b72e24',
+    colorB: '#f7d9a9',
+    stock: 10,
+    badge: '',
+    image: '',
+    variants: [{ name: 'Unidad', price: 9.9 }]
+  };
 
   return `<div class="form-grid"><div><label>Nombre</label><input class="form-control" name="title" value="${escHtml(source.title)}" required></div><div><label>Categoría</label><select class="form-control" name="category">${Object.keys(categoryMeta).map((category) => `<option value="${category}" ${source.category === category ? 'selected' : ''}>${categoryMeta[category].title}</option>`).join('')}</select></div><div class="full"><label>Descripción</label><textarea class="form-control" name="desc" required>${escHtml(source.desc)}</textarea></div><div><label>Stock</label><input class="form-control" name="stock" type="number" min="0" value="${source.stock}" required></div><div><label>Etiqueta</label><input class="form-control" name="badge" value="${escHtml(source.badge || '')}" placeholder="Nuevo, Popular..."></div><div><label>Emoji</label><input class="form-control" name="emoji" value="${escHtml(source.emoji || '🍰')}"></div><div><label>Color A</label><input class="form-control" name="colorA" value="${escHtml(source.colorA || '#b72e24')}"></div><div><label>Color B</label><input class="form-control" name="colorB" value="${escHtml(source.colorB || '#f7d9a9')}"></div><div class="full"><label>URL imagen</label><input class="form-control" name="image" value="${escHtml(source.image || '')}" placeholder="https://..."></div><div class="full"><label>Subir imagen</label><input class="form-control" name="imageFile" type="file" accept="image/*">${source.image ? `<img class="preview-img" src="${escHtml(source.image)}" alt="preview">` : ''}</div><div class="full"><label>Variantes (Nombre:precio, ...)</label><input class="form-control" name="variants" value="${escHtml((source.variants || []).map((variant) => `${variant.name}:${variant.price}`).join(', '))}" required></div></div>`;
 }
 
 function bindProdForm() {
   const form = $('productForm');
+
   if (!form) return;
 
   form.onsubmit = async (event) => {
     event.preventDefault();
+
     const data = new FormData(form);
     let uploaded = '';
 
@@ -656,7 +779,10 @@ function bindProdForm() {
       .split(',')
       .map((raw) => {
         const [name, price] = raw.split(':');
-        return { name: (name || '').trim(), price: Number(String(price || '').replace(',', '.')) };
+        return {
+          name: (name || '').trim(),
+          price: Number(String(price || '').replace(',', '.'))
+        };
       })
       .filter((variant) => variant.name && !Number.isNaN(variant.price));
 
@@ -721,6 +847,7 @@ function cancelEditProduct() {
 
 function toggleProduct(id) {
   products = products.map((item) => item.id === id ? { ...item, active: !item.active } : item);
+
   save(STORAGE_KEYS.products, products);
   renderStore();
   renderAdminPortal();
@@ -733,7 +860,9 @@ function renderAdminStock() {
 
 function saveStock(id) {
   const stock = Math.max(0, Number($(`stock-${id}`).value || 0));
+
   products = products.map((item) => item.id === id ? { ...item, stock } : item);
+
   save(STORAGE_KEYS.products, products);
   renderStore();
   renderAdminPortal();
@@ -748,9 +877,11 @@ function renderAdminOrders() {
 
 function saveOrderStatus(id) {
   const select = $(`status-${id}`);
+
   if (!select) return;
 
   orders = orders.map((order) => order.id === id ? { ...order, status: select.value } : order);
+
   save(STORAGE_KEYS.orders, orders);
   renderAdminPortal();
   activateTab('adminTabs', 'adminOrders', 'admin');
@@ -758,9 +889,16 @@ function saveOrderStatus(id) {
 }
 
 function activateTab(containerId, tabId, scope) {
-  document.querySelectorAll(`#${containerId} .portal-tab`).forEach((tab) => tab.classList.toggle('active', tab.dataset.tab === tabId));
+  document.querySelectorAll(`#${containerId} .portal-tab`).forEach((tab) => {
+    tab.classList.toggle('active', tab.dataset.tab === tabId);
+  });
+
   const view = scope === 'admin' ? $('adminView') : $('clientView');
-  view.querySelectorAll('.portal-section').forEach((section) => section.classList.remove('active'));
+
+  view.querySelectorAll('.portal-section').forEach((section) => {
+    section.classList.remove('active');
+  });
+
   $(tabId).classList.add('active');
 }
 
@@ -782,7 +920,9 @@ function bindEvents() {
 
   $('registerForm').onsubmit = (event) => {
     event.preventDefault();
+
     let ok = true;
+
     const name = $('regName').value.trim();
     const email = $('regEmail').value.trim();
     const password = $('regPassword').value;
@@ -821,6 +961,7 @@ function bindEvents() {
 
   $('loginForm').onsubmit = (event) => {
     event.preventDefault();
+
     let ok = true;
 
     [$('emailInput'), $('passwordInput')].forEach((input) => input.classList.remove('error'));
@@ -848,10 +989,15 @@ function bindEvents() {
 
   $('categoryNav').onclick = (event) => {
     const link = event.target.closest('a[data-filter]');
+
     if (!link) return;
 
     activeFilter = link.dataset.filter;
-    document.querySelectorAll('#categoryNav a').forEach((anchor) => anchor.classList.toggle('active', anchor.dataset.filter === activeFilter));
+
+    document.querySelectorAll('#categoryNav a').forEach((anchor) => {
+      anchor.classList.toggle('active', anchor.dataset.filter === activeFilter);
+    });
+
     showView('store');
   };
 
@@ -866,18 +1012,22 @@ function bindEvents() {
   $('heroLoginBtn').onclick = () => currentUser() ? showPortalForRole() : openLogin();
   $('portalBtn').onclick = showPortalForRole;
   $('logoutBtn').onclick = logout;
+
   $('homeLink').onclick = (event) => {
     event.preventDefault();
     showView('store');
   };
+
   $('closeLogin').onclick = closeLogin;
   $('closeRegister').onclick = closeRegister;
   $('goToRegister').onclick = openRegister;
   $('goToLogin').onclick = openLogin;
+
   $('fillAdmin').onclick = () => {
     $('emailInput').value = 'admin@demo.com';
     $('passwordInput').value = '1234';
   };
+
   $('fillClient').onclick = () => {
     $('emailInput').value = 'cliente@demo.com';
     $('passwordInput').value = '1234';
@@ -906,6 +1056,7 @@ function bindEvents() {
     anchor.onclick = () => {
       if (anchor.dataset.mobileLogin !== undefined) openLogin();
       if (anchor.dataset.mobileView === 'store') showView('store');
+
       mobilePanel.classList.remove('open');
       checkOverlay();
     };
@@ -927,7 +1078,11 @@ function bindEvents() {
 
   $('whatsappBtn').onclick = (event) => {
     event.preventDefault();
-    window.open('https://api.whatsapp.com/send?phone=34678637290&text=' + encodeURIComponent('Hola, quiero hacer una consulta a Pastelería El Caballo Goloso'), '_blank', 'noopener,noreferrer');
+    window.open(
+      'https://api.whatsapp.com/send?phone=34678637290&text=' + encodeURIComponent('Hola, quiero hacer una consulta a Pastelería El Caballo Goloso'),
+      '_blank',
+      'noopener,noreferrer'
+    );
   };
 }
 
@@ -940,6 +1095,6 @@ window.saveOrderStatus = saveOrderStatus;
 window.activateTab = activateTab;
 
 bindEvents();
-renderStore();
-updateCart();
 updateAuthUI();
+updateCart();
+cargarProductosDesdeApi();
