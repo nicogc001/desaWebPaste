@@ -174,7 +174,9 @@ function readFile(file) {
 }
 
 function priceText(item) {
-  const prices = (item.variants || []).map((variant) => Number(variant.price)).filter((price) => !Number.isNaN(price));
+  const prices = (item.variants || [])
+    .map((variant) => Number(variant.price))
+    .filter((price) => !Number.isNaN(price));
 
   if (!prices.length) return fmtPrice(0);
 
@@ -189,7 +191,7 @@ function normalizarProductoApi(item) {
 
   return {
     id: String(item.id),
-    title: item.title || item.nombre || '',
+    title: item.title || item.titulo || item.nombre || '',
     desc: item.desc || item.descripcion || '',
     category: item.category || item.categoria || 'novedades',
     emoji: item.emoji || '🍰',
@@ -221,7 +223,6 @@ async function cargarProductosDesdeApi() {
     }
 
     const data = await response.json();
-
     products = data.map(normalizarProductoApi);
 
     save(STORAGE_KEYS.products, products);
@@ -546,150 +547,107 @@ function showToast(message) {
 }
 
 function currentUser() {
-    return session || null;
-  }
-  
-  async function login(email, password) {
-    if (!API_URL) {
-      showToast('Login con API no disponible en producción todavía');
-      return;
-    }
-  
-    try {
-      const response = await fetch(`${API_URL}/auth/login`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          email,
-          password
-        })
-      });
-  
-      const data = await response.json();
-  
-      if (!response.ok) {
-        throw new Error(data.message || 'Email o contraseña incorrectos');
-      }
-  
-      session = {
-        userId: data.usuario.id,
-        role: data.usuario.role,
-        name: data.usuario.name,
-        email: data.usuario.email,
-        phone: data.usuario.phone || '',
-        token: data.token
-      };
-  
-      localStorage.setItem(STORAGE_KEYS.session, JSON.stringify(session));
-  
-      closeLogin();
-      updateAuthUI();
-      showPortalForRole();
-      showToast(`Bienvenido/a, ${data.usuario.name}`);
-    } catch (error) {
-      console.error(error);
-      showToast(error.message);
-    }
-  }
-  
-  async function register(name, email, phone, password) {
-    if (!API_URL) {
-      showToast('Registro con API no disponible en producción todavía');
-      return;
-    }
-  
-    try {
-      const response = await fetch(`${API_URL}/auth/register`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          name,
-          email,
-          phone,
-          password
-        })
-      });
-  
-      const data = await response.json();
-  
-      if (!response.ok) {
-        throw new Error(data.message || 'No se pudo crear la cuenta');
-      }
-  
-      session = {
-        userId: data.usuario.id,
-        role: data.usuario.role,
-        name: data.usuario.name,
-        email: data.usuario.email,
-        phone: data.usuario.phone || '',
-        token: data.token
-      };
-  
-      localStorage.setItem(STORAGE_KEYS.session, JSON.stringify(session));
-  
-      closeRegister();
-      updateAuthUI();
-      showPortalForRole();
-      showToast(`¡Cuenta creada! Bienvenido/a, ${data.usuario.name}`);
-    } catch (error) {
-      console.error(error);
-      showToast(error.message);
-    }
+  if (!session) return null;
+
+  return {
+    ...session,
+    id: session.id ?? session.userId
+  };
+}
+
+async function login(email, password) {
+  if (!API_URL) {
+    showToast('Login con API no disponible en producción todavía');
+    return;
   }
 
+  try {
+    const response = await fetch(`${API_URL}/auth/login`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        email,
+        password
+      })
+    });
 
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.message || 'Email o contraseña incorrectos');
+    }
+
+    session = {
+      id: data.usuario.id,
+      userId: data.usuario.id,
+      role: data.usuario.rol,
+      name: data.usuario.nombre,
+      email: data.usuario.email,
+      phone: data.usuario.telefono || '',
+      token: data.token
+    };
+
+    localStorage.setItem(STORAGE_KEYS.session, JSON.stringify(session));
+
+    closeLogin();
+    updateAuthUI();
+    showPortalForRole();
+    showToast(`Bienvenido/a, ${session.name}`);
+  } catch (error) {
+    console.error(error);
+    showToast(error.message);
+  }
+}
 
 async function register(name, email, phone, password) {
-    if (!API_URL) {
-      showToast('Registro con API no disponible en producción todavía');
-      return;
-    }
-  
-    try {
-      const response = await fetch(`${API_URL}/auth/register`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          name,
-          email,
-          phone,
-          password
-        })
-      });
-  
-      const data = await response.json();
-  
-      if (!response.ok) {
-        throw new Error(data.message || 'No se pudo crear la cuenta');
-      }
-  
-      session = {
-        userId: data.usuario.id,
-        role: data.usuario.role,
-        name: data.usuario.name,
-        email: data.usuario.email,
-        token: data.token
-      };
-  
-      localStorage.setItem(STORAGE_KEYS.session, JSON.stringify(session));
-  
-      closeRegister();
-      updateAuthUI();
-      showPortalForRole();
-      showToast(`¡Cuenta creada! Bienvenido/a, ${data.usuario.name}`);
-    } catch (error) {
-      console.error(error);
-      showToast(error.message);
-    }
+  if (!API_URL) {
+    showToast('Registro con API no disponible en producción todavía');
+    return;
   }
 
+  try {
+    const response = await fetch(`${API_URL}/auth/register`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        nombre: name,
+        email,
+        telefono: phone,
+        password
+      })
+    });
 
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.message || 'No se pudo crear la cuenta');
+    }
+
+    session = {
+      id: data.usuario.id,
+      userId: data.usuario.id,
+      role: data.usuario.rol,
+      name: data.usuario.nombre,
+      email: data.usuario.email,
+      phone: data.usuario.telefono || '',
+      token: data.token
+    };
+
+    localStorage.setItem(STORAGE_KEYS.session, JSON.stringify(session));
+
+    closeRegister();
+    updateAuthUI();
+    showPortalForRole();
+    showToast(`¡Cuenta creada! Bienvenido/a, ${session.name}`);
+  } catch (error) {
+    console.error(error);
+    showToast(error.message);
+  }
+}
 
 function logout() {
   session = null;
@@ -1113,7 +1071,7 @@ function bindEvents() {
     $('emailInput').value = 'admin@demo.com';
     $('passwordInput').value = '123456';
   };
-  
+
   $('fillClient').onclick = () => {
     $('emailInput').value = 'cliente@demo.com';
     $('passwordInput').value = '123456';
