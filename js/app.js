@@ -106,13 +106,18 @@ function save(key, value) {
 }
 
 let users = loadUsers();
-let products = loadOrSeed(STORAGE_KEYS.products, defaultProducts);
+// FIX STOCK: si hay API, siempre arrancamos con los defaultProducts en memoria;
+// los productos de localStorage solo se usan como fallback sin API.
+let products = API_URL
+  ? JSON.parse(JSON.stringify(defaultProducts))
+  : loadOrSeed(STORAGE_KEYS.products, defaultProducts);
 let orders = loadOrSeed(STORAGE_KEYS.orders, defaultOrders);
 let session = JSON.parse(localStorage.getItem(STORAGE_KEYS.session) || 'null');
 let cart = loadOrSeed(STORAGE_KEYS.cart, []);
 let activeFilter = 'all';
 let searchTerm = '';
 let editingProductId = null;
+let editingOrderId = null;
 let selectedTienda = 'tienda1';
 
 const sectionsEl = $('sections');
@@ -197,7 +202,9 @@ function normalizarProductoApi(item) {
     emoji: item.emoji || '🍰',
     colorA: item.colorA || '#b72e24',
     colorB: item.colorB || '#f7d9a9',
-    stock: Number(item.stock || 0),
+    // FIX STOCK: usar item.stock directamente (puede ser 0 legítimamente),
+    // solo caer a 0 si es null/undefined
+    stock: item.stock != null ? Number(item.stock) : 0,
     active: item.active ?? item.activo ?? true,
     badge: item.badge || item.etiqueta || '',
     image: item.image || item.imagen || '',
@@ -211,6 +218,8 @@ function normalizarProductoApi(item) {
 
 async function cargarProductosDesdeApi() {
   if (!API_URL) {
+    // Sin API: cargar de localStorage (puede tener stocks modificados por pedidos locales)
+    products = loadOrSeed(STORAGE_KEYS.products, defaultProducts);
     renderStore();
     return;
   }
@@ -225,12 +234,16 @@ async function cargarProductosDesdeApi() {
     const data = await response.json();
     products = data.map(normalizarProductoApi);
 
-    save(STORAGE_KEYS.products, products);
+    // FIX STOCK: NO guardar en localStorage los productos de la API.
+    // Así los stocks de la API no se mezclan con los de localStorage y
+    // al recargar siempre se piden stocks frescos al servidor.
     renderStore();
     updateCart();
   } catch (error) {
     console.error(error);
     showToast('No se pudo conectar con la API. Usando productos locales.');
+    // Fallback: intentar localStorage, si no hay nada usar defaultProducts
+    products = loadOrSeed(STORAGE_KEYS.products, defaultProducts);
     renderStore();
   }
 }
@@ -519,20 +532,25 @@ function confirmOrder() {
     }))
   };
 
-  products = products.map((item) => {
-    const quantity = cart.filter((line) => line.id === item.id).reduce((sum, line) => sum + line.qty, 0);
-    return quantity ? { ...item, stock: Math.max(0, item.stock - quantity) } : item;
-  });
+  // FIX STOCK: solo decrementar y guardar stocks en localStorage cuando NO hay API.
+  // Con API, el backend gestiona el stock; modificarlo localmente causaba que todos
+  // los productos mostrasen "Agotado" en recargas posteriores.
+  if (!API_URL) {
+    products = products.map((item) => {
+      const quantity = cart.filter((line) => line.id === item.id).reduce((sum, line) => sum + line.qty, 0);
+      return quantity ? { ...item, stock: Math.max(0, item.stock - quantity) } : item;
+    });
+    save(STORAGE_KEYS.products, products);
+    renderStore();
+  }
 
   orders.push(newOrder);
   cart = [];
 
-  save(STORAGE_KEYS.products, products);
   save(STORAGE_KEYS.orders, orders);
   save(STORAGE_KEYS.cart, cart);
 
   updateCart();
-  renderStore();
   closeModal(checkoutModal);
   showView('client');
   activateTab('clientTabs', 'clientOrders', 'client');
@@ -735,9 +753,218 @@ function renderOrdersTable(list, admin) {
 
   return `<div class="table-wrap"><table><thead><tr><th>#</th>${admin ? '<th>Cliente</th>' : ''}<th>Fecha</th><th>Recogida</th><th>Tienda</th><th>Estado</th><th>Total</th><th></th></tr></thead><tbody>${list.map((order) => {
     const owner = users.find((user) => user.id === order.userId);
-    return `<tr><td>#${order.id}</td>${admin ? `<td>${escHtml(owner ? owner.name : '—')}</td>` : ''}<td>${order.date}</td><td>${order.pickupDate || '—'}<br><small style="color:var(--muted)">${order.pickupTime || ''}</small></td><td>${escHtml(order.tienda || '—')}</td><td>${admin ? renderStatusSel(order) : `<span class="status ${normStatus(order.status)}">${escHtml(order.status)}</span>`}</td><td>${fmtPrice(order.total)}</td><td>${admin ? `<button class="btn btn-small" onclick="saveOrderStatus(${order.id})">Guardar</button>` : `<button class="btn btn-small" onclick="repeatOrder(${order.id})">Repetir</button>`}</td></tr>`;
+    const rowId = `order-row-${order.id}`;
+    const detailId = `order-detail-${order.id}`;
+    return `<tr id="${rowId}"><td>#${order.id}</td>${admin ? `<td>${escHtml(owner ? owner.name : '—')}</td>` : ''}<td>${order.date}</td><td>${order.pickupDate || '—'}<br><small style="color:var(--muted)">${order.pickupTime || ''}</small></td><td>${escHtml(order.tienda || '—')}</td><td>${admin ? renderStatusSel(order) : `<span class="status ${normStatus(order.status)}">${escHtml(order.status)}</span>`}</td><td id="total-display-${order.id}">${fmtPrice(order.total)}</td><td style="white-space:nowrap">${admin ? `<button class="btn btn-small" onclick="saveOrderStatus(${order.id})">Guardar</button> <button class="btn btn-small" onclick="toggleOrderEdit(${order.id})" id="edit-btn-${order.id}">Editar líneas</button>` : `<button class="btn btn-small" onclick="repeatOrder(${order.id})">Repetir</button>`}</td></tr>${admin ? `<tr id="${detailId}" style="display:none"><td colspan="8" style="padding:0">${renderOrderEditPanel(order)}</td></tr>` : ''}`;
   }).join('')}</tbody></table></div>`;
 }
+
+// ─── EDICIÓN DE LÍNEAS DE PEDIDO (ADMIN) ──────────────────────────────────────
+
+/**
+ * Genera el panel expandible con las líneas editables de un pedido.
+ * Permite cambiar variante, cantidad y precio unitario de cada línea,
+ * y eliminar líneas. El total se recalcula en tiempo real.
+ */
+function renderOrderEditPanel(order) {
+  const itemsHtml = (order.items || []).map((item, index) => `
+    <tr data-line="${index}">
+      <td style="color:var(--muted);font-size:13px">${escHtml(item.title)}</td>
+      <td><input class="form-control order-edit-variant" data-line="${index}" type="text"
+           value="${escHtml(item.variant)}" style="min-width:140px;padding:6px 10px;font-size:13px"></td>
+      <td><input class="form-control order-edit-qty" data-line="${index}" type="number"
+           min="1" value="${item.qty}" style="width:70px;padding:6px 10px;font-size:13px"></td>
+      <td><input class="form-control order-edit-price" data-line="${index}" type="number"
+           min="0" step="0.01" value="${Number(item.price).toFixed(2)}"
+           style="width:90px;padding:6px 10px;font-size:13px"></td>
+      <td style="text-align:right;font-size:13px;font-weight:600" id="order-line-subtotal-${order.id}-${index}">
+        ${fmtPrice(item.qty * item.price)}
+      </td>
+      <td><button class="btn btn-small btn-danger" onclick="removeOrderLine(${order.id},${index})">✕</button></td>
+    </tr>
+  `).join('');
+
+  return `
+    <div style="background:#fff8ef;border-top:2px solid var(--line);padding:18px 24px">
+      <h4 style="margin:0 0 14px;font-size:14px;color:var(--ink)">Editar líneas del encargo #${order.id}</h4>
+      <div class="table-wrap" style="margin-bottom:14px">
+        <table id="order-edit-table-${order.id}">
+          <thead>
+            <tr>
+              <th>Producto</th>
+              <th>Variante</th>
+              <th>Cantidad</th>
+              <th>Precio ud.</th>
+              <th style="text-align:right">Subtotal</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="order-edit-body-${order.id}">
+            ${itemsHtml}
+          </tbody>
+        </table>
+      </div>
+      <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+        <button class="btn" onclick="addOrderLine(${order.id})" style="font-size:13px">＋ Añadir línea</button>
+        <span style="margin-left:auto;font-size:14px;color:var(--muted)">
+          Total calculado:
+          <strong id="order-edit-total-${order.id}" style="color:var(--ink);font-size:15px">
+            ${fmtPrice(order.total)}
+          </strong>
+        </span>
+        <button class="btn btn-primary" onclick="saveOrderEdit(${order.id})" style="font-size:13px">Guardar cambios</button>
+        <button class="btn" onclick="toggleOrderEdit(${order.id})" style="font-size:13px">Cancelar</button>
+      </div>
+    </div>
+  `;
+}
+
+/** Abre o cierra el panel de edición de un pedido */
+function toggleOrderEdit(id) {
+  const detailRow = $(`order-detail-${id}`);
+  const btn = $(`edit-btn-${id}`);
+  if (!detailRow) return;
+
+  const isOpen = detailRow.style.display !== 'none';
+  detailRow.style.display = isOpen ? 'none' : 'table-row';
+
+  if (btn) btn.textContent = isOpen ? 'Editar líneas' : 'Cerrar';
+
+  if (!isOpen) {
+    // Vincular listeners de recálculo al abrir
+    bindOrderEditListeners(id);
+  }
+}
+
+/** Vincula los inputs del panel de edición para recalcular total en tiempo real */
+function bindOrderEditListeners(orderId) {
+  const body = $(`order-edit-body-${orderId}`);
+  if (!body) return;
+
+  body.querySelectorAll('.order-edit-qty, .order-edit-price').forEach((input) => {
+    input.oninput = () => recalcOrderEditTotal(orderId);
+  });
+}
+
+/** Recalcula y muestra el total mientras el admin edita las líneas */
+function recalcOrderEditTotal(orderId) {
+  const body = $(`order-edit-body-${orderId}`);
+  const totalEl = $(`order-edit-total-${orderId}`);
+  if (!body || !totalEl) return;
+
+  let total = 0;
+
+  body.querySelectorAll('tr[data-line]').forEach((row) => {
+    const lineIndex = row.dataset.line;
+    const qty = Math.max(1, Number(row.querySelector('.order-edit-qty').value) || 1);
+    const price = Math.max(0, Number(row.querySelector('.order-edit-price').value) || 0);
+    const subtotal = qty * price;
+    total += subtotal;
+
+    const subtotalEl = $(`order-line-subtotal-${orderId}-${lineIndex}`);
+    if (subtotalEl) subtotalEl.textContent = fmtPrice(subtotal);
+  });
+
+  totalEl.textContent = fmtPrice(total);
+}
+
+/** Elimina una línea del panel de edición */
+function removeOrderLine(orderId, lineIndex) {
+  const body = $(`order-edit-body-${orderId}`);
+  if (!body) return;
+
+  const row = body.querySelector(`tr[data-line="${lineIndex}"]`);
+  if (row) row.remove();
+
+  // Renumerar data-line para que los índices sean consecutivos
+  body.querySelectorAll('tr[data-line]').forEach((r, i) => {
+    r.dataset.line = i;
+    r.querySelectorAll('[data-line]').forEach((el) => { el.dataset.line = i; });
+    const subtotalEl = r.querySelector('[id^="order-line-subtotal-"]');
+    if (subtotalEl) subtotalEl.id = `order-line-subtotal-${orderId}-${i}`;
+  });
+
+  recalcOrderEditTotal(orderId);
+}
+
+/** Añade una fila vacía al panel de edición para que el admin introduzca un producto nuevo */
+function addOrderLine(orderId) {
+  const body = $(`order-edit-body-${orderId}`);
+  if (!body) return;
+
+  const index = body.querySelectorAll('tr[data-line]').length;
+
+  const tr = document.createElement('tr');
+  tr.dataset.line = index;
+  tr.innerHTML = `
+    <td><input class="form-control" type="text" placeholder="Nombre producto"
+         style="min-width:130px;padding:6px 10px;font-size:13px" data-new-title></td>
+    <td><input class="form-control order-edit-variant" data-line="${index}" type="text"
+         placeholder="Variante" style="min-width:140px;padding:6px 10px;font-size:13px"></td>
+    <td><input class="form-control order-edit-qty" data-line="${index}" type="number"
+         min="1" value="1" style="width:70px;padding:6px 10px;font-size:13px"></td>
+    <td><input class="form-control order-edit-price" data-line="${index}" type="number"
+         min="0" step="0.01" value="0.00" style="width:90px;padding:6px 10px;font-size:13px"></td>
+    <td style="text-align:right;font-size:13px;font-weight:600" id="order-line-subtotal-${orderId}-${index}">
+      ${fmtPrice(0)}
+    </td>
+    <td><button class="btn btn-small btn-danger" onclick="removeOrderLine(${orderId},${index})">✕</button></td>
+  `;
+  body.appendChild(tr);
+
+  tr.querySelectorAll('.order-edit-qty, .order-edit-price').forEach((input) => {
+    input.oninput = () => recalcOrderEditTotal(orderId);
+  });
+
+  tr.querySelector('.order-edit-price').focus();
+}
+
+/** Guarda los cambios de líneas y total en el pedido */
+function saveOrderEdit(orderId) {
+  const body = $(`order-edit-body-${orderId}`);
+  const totalEl = $(`order-edit-total-${orderId}`);
+  if (!body) return;
+
+  const updatedItems = [];
+  let newTotal = 0;
+
+  body.querySelectorAll('tr[data-line]').forEach((row) => {
+    const titleInput = row.querySelector('[data-new-title]');
+    const title = titleInput
+      ? titleInput.value.trim()
+      : row.querySelector('td:first-child')?.textContent?.trim() || '—';
+
+    const variant = row.querySelector('.order-edit-variant')?.value?.trim() || '—';
+    const qty = Math.max(1, Number(row.querySelector('.order-edit-qty')?.value) || 1);
+    const price = Math.max(0, Number(row.querySelector('.order-edit-price')?.value) || 0);
+
+    if (!title) return;
+
+    updatedItems.push({ productId: null, title, variant, qty, price });
+    newTotal += qty * price;
+  });
+
+  if (!updatedItems.length) {
+    showToast('El pedido debe tener al menos una línea');
+    return;
+  }
+
+  orders = orders.map((order) => {
+    if (order.id !== orderId) return order;
+    return { ...order, items: updatedItems, total: Number(newTotal.toFixed(2)) };
+  });
+
+  save(STORAGE_KEYS.orders, orders);
+
+  // Actualizar total visible en la fila principal sin rerenderizar toda la tabla
+  const displayEl = $(`total-display-${orderId}`);
+  if (displayEl) displayEl.textContent = fmtPrice(newTotal);
+
+  toggleOrderEdit(orderId);
+  showToast(`Pedido #${orderId} actualizado`);
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
 
 function renderStatusSel(order) {
   return `<select class="form-control" id="status-${order.id}" style="min-width:150px;padding:8px 12px;">${['Pendiente', 'Preparando', 'Listo para recoger', 'Entregado', 'Cancelado'].map((status) => `<option value="${status}" ${status === order.status ? 'selected' : ''}>${status}</option>`).join('')}</select>`;
@@ -927,8 +1154,7 @@ function saveOrderStatus(id) {
   orders = orders.map((order) => order.id === id ? { ...order, status: select.value } : order);
 
   save(STORAGE_KEYS.orders, orders);
-  renderAdminPortal();
-  activateTab('adminTabs', 'adminOrders', 'admin');
+  renderAdminOrders();
   showToast('Estado actualizado');
 }
 
@@ -1136,6 +1362,10 @@ window.cancelEditProduct = cancelEditProduct;
 window.toggleProduct = toggleProduct;
 window.saveStock = saveStock;
 window.saveOrderStatus = saveOrderStatus;
+window.toggleOrderEdit = toggleOrderEdit;
+window.removeOrderLine = removeOrderLine;
+window.addOrderLine = addOrderLine;
+window.saveOrderEdit = saveOrderEdit;
 window.activateTab = activateTab;
 
 bindEvents();
